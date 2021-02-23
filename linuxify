@@ -1,193 +1,166 @@
 #!/bin/bash
 set -euo pipefail
 
-linuxify_check_os() {
-  if ! [[ "$OSTYPE" =~ darwin* ]]; then
-      echo "This is meant to be run on macOS only"
-      exit
-  fi
-}
+if ! [[ "$OSTYPE" =~ darwin* ]]; then
+	echo "This is meant to be run on macOS only"
+	exit 1
+fi
 
-linuxify_check_brew() {
-  if ! command -v brew > /dev/null; then
-      echo "Homebrew not installed!"
-      echo "In order to use this script please install homebrew from https://brew.sh"
-      exit
-  fi
-}
+if ! command -v brew >/dev/null; then
+	echo "In order to use this script please install Homebrew from https://brew.sh"
+	exit 1
+fi
 
-linuxify_check_dirs() {
-    result=0
+for dir in /usr/local/bin /usr/local/sbin; do
+	if [[ ! -d $dir || ! -w $dir ]]; then
+		echo "$dir must exist and be writeable"
+		exit 1
+	fi
+done
 
-    for dir in /usr/local/bin /usr/local/sbin; do
-        if [[ ! -d $dir || ! -w $dir ]]; then
-            echo "$dir must exist and be writeable"
-            result=1
-        fi
-    done
+_linuxify_formulas=(
+	# GNU programs non-existing in macOS
+	"watch" "wget" "wdiff" "gdb" "autoconf"
+	# GNU programs whose BSD counterpart is installed in macOS
+	"coreutils" "binutils" "diffutils" "ed" "findutils" "gawk" "gnu-indent" "gnu-sed" "gnu-tar" "gnu-which" "grep" "gzip" "screen"
 
-    return $result
-}
+	# GNU programs existing in macOS which are outdated
+	"bash" "emacs" "gpatch" "less" "m4" "make" "nano" "bison"
+	# BSD programs existing in macOS which are outdated
+	"flex"
 
-linuxify_formulas=(
-    # GNU programs non-existing in macOS
-    "watch"
-    "wget"
-    "wdiff"
-    "gdb"
-    "autoconf"
-
-    # GNU programs whose BSD counterpart is installed in macOS
-    "coreutils"
-    "binutils"
-    "diffutils"
-    "ed"
-    "findutils"
-    "gawk"
-    "gnu-indent"
-    "gnu-sed"
-    "gnu-tar"
-    "gnu-which"
-    "grep"
-    "gzip"
-    "screen"
-
-    # GNU programs existing in macOS which are outdated
-    "bash"
-    "emacs"
-    "gpatch"
-    "less"
-    "m4"
-    "make"
-    "nano"
-    "bison"
-
-    # BSD programs existing in macOS which are outdated
-    "flex"
-
-    # Other common/preferred programs in GNU/Linux distributions
-    "libressl"
-    "file-formula"
-    "git"
-    "openssh"
-    "perl"
-    "python"
-    "rsync"
-    "unzip"
-    "vim"
+	# Other common/preferred programs in GNU/Linux distributions
+	"libressl" "file-formula" "git" "openssh" "perl" "python" "rsync" "unzip" "vim"
 )
 
-linuxify_install() {
-    linuxify_check_os;
-    linuxify_check_brew;
-    linuxify_check_dirs;
+linuxify() {
+	# Install all formulas
+	for (( i=0; i<${#linuxify_formulas[@]}; i++ )); do
+		if ! brew ls --versions ${linuxify_formulas[i]} >/dev/null; then
+			brew install ${linuxify_formulas[i]}
+		fi
+	done
 
-    # Install all formulas
-    for (( i=0; i<${#linuxify_formulas[@]}; i++ )); do
-        if ! brew ls --versions ${linuxify_formulas[i]} > /dev/null; then
-            brew install ${linuxify_formulas[i]}
-        fi
-    done
+	# Offer to change shell to newly installed bash read -p "Do you want to change your shell to the latest bash (Y/N)? " -n 1 -r
+	if [[ $REPLY =~ [Yy]$ ]]; then
+		grep -qF '/usr/local/bin/bash' /etc/shells || echo '/usr/local/bin/bash' | sudo tee -a /etc/shells >/dev/null
+		echo # Blank line so the password entry isn't bunched-up
+		chsh -s /usr/local/bin/bash
+	else
+		echo "OK, leaving your shell as $SHELL"
+	fi
 
-    # Offer to change shell to newly installed bash
-    read -p "Do you want to change your shell to the latest bash (Y/N)? " -n 1 -r
-    if [[ $REPLY =~ [Yy]$ ]]; then
-        grep -qF '/usr/local/bin/bash' /etc/shells || echo '/usr/local/bin/bash' | sudo tee -a /etc/shells > /dev/null
-        echo # Blank line so the password entry isn't bunched-up
-        chsh -s /usr/local/bin/bash
-    else
-        echo "OK, leaving your shell as $SHELL"
-    fi
+	# gdb requires special privileges to access Mach ports.
+	# One can either codesign the binary as per https://sourceware.org/gdb/wiki/BuildingOnDarwin
+	# Or, on 10.12 Sierra or later with SIP, declare `set startup-with-shell off` in `~/.gdbinit`:
+	grep -qF 'set startup-with-shell off' ~/.gdbinit || echo 'set startup-with-shell off' | tee -a ~/.gdbinit >/dev/null
 
-    # gdb requires special privileges to access Mach ports.
-    # One can either codesign the binary as per https://sourceware.org/gdb/wiki/BuildingOnDarwin
-    # Or, on 10.12 Sierra or later with SIP, declare `set startup-with-shell off` in `~/.gdbinit`:
-    grep -qF 'set startup-with-shell off' ~/.gdbinit || echo 'set startup-with-shell off' | tee -a ~/.gdbinit > /dev/null
-
-    # Make changes to PATH/MANPATH/INFOPATH/LDFLAGS/CPPFLAGS
-    cp .linuxify ~/.linuxify
-    echo "Add '. ~/.linuxify' to your ~/.bashrc, ~/.zshrc or your shell's equivalent config file"
+	# Persist linuxify in bash profile
+	echo '. ~/linuxify' >> ~/.bashrc
+	exec bash
 }
 
-linuxify_uninstall() {
-    linuxify_check_os;
-    linuxify_check_brew;
+unlinuxify() {
+	# Remove gdb fix
+	[ -f ~/.gdbinit ] && sed -i.bak '/set startup-with-shell off/d' ~/.gdbinit && rm ~/.gdbinit.bak
 
-    # Remove gdb fix
-    [ -f ~/.gdbinit ] && sed -i.bak '/set startup-with-shell off/d' ~/.gdbinit && rm ~/.gdbinit.bak
+	# Offer to change default shell back to macOS default
+	bash_is_local=false
+	if [[ $SHELL =~ local ]]; then
+		read -p "Do you want to change your shell back to macOS default (macOSVersion >= 10.15.x ? zsh : bash) ? " -n 1 -r
+		if [[ $REPLY =~ [Yy]$ ]]; then
+			sudo sed -i.bak '/\/usr\/local\/bin\/bash/d' /etc/shells && sudo rm /etc/shells.bak
+			echo
+			if [[ $(sw_vers -productVersion | awk -F. '{print $2}') -gt 14 ]]; then
+				chsh -s /bin/zsh
+			else
+				chsh -s /bin/bash
+			fi
+		else
+			echo "OK, leaving your shell as $SHELL"
+			if [[ $SHELL == /usr/bin/local/bash ]]; then
+				bash_is_local=true
+			fi
+		fi
+	fi
 
-    # Offer to change default shell back to macOS default
-    bash_is_local=false
-    if [[ $SHELL =~ local ]]; then
-        read -p "Do you want to change your shell back to macOS default (macOSVersion >= 10.15.x ? zsh : bash) ? " -n 1 -r
-        if [[ $REPLY =~ [Yy]$ ]]; then
-            sudo sed -i.bak '/\/usr\/local\/bin\/bash/d' /etc/shells && sudo rm /etc/shells.bak
-            echo
-            if [[ $(sw_vers -productVersion | awk -F. '{print $2}') -gt 14 ]]; then
-                chsh -s /bin/zsh
-            else
-                chsh -s /bin/bash
-            fi
-        else
-            echo "OK, leaving your shell as $SHELL"
-            if [[ $SHELL == /usr/bin/local/bash ]]; then
-                bash_is_local=true
-            fi
-        fi
-    fi
+	# Uninstall all formulas in reverse order
+	for (( i=${#linuxify_formulas[@]}-1; i>=0; i-- )); do
+		if [[ ${linuxify_formulas[i]} != bash ]]; then
+			brew uninstall -f $(echo "${linuxify_formulas[i]}" | cut -d ' ' -f1)
+		fi
+	done
 
-    # Uninstall all formulas in reverse order
-    for (( i=${#linuxify_formulas[@]}-1; i>=0; i-- )); do
-        if [[ ${linuxify_formulas[i]} != bash ]]; then
-            brew uninstall -f $(echo "${linuxify_formulas[i]}" | cut -d ' ' -f1)
-        fi
-    done
-    
-    # Only remove bash if the user didn't elect to keep it as their shell
-    if [[ "$bash_is_local" != true ]]; then
-        brew uninstall bash
-    fi
+	# Only remove bash if the user didn't elect to keep it as their shell
+	if [[ "$bash_is_local" != true ]]; then
+		brew uninstall bash
+	fi
 
-    # Remove changes to PATH/MANPATH/INFOPATH/LDFLAGS/CPPFLAGS
-    rm -f ~/.linuxify
-    echo "Remove '. ~/.linuxify' from your ~/.bashrc, ~/.zshrc or your shell's equivalent config file"
+	# Remove changes to PATH/MANPATH/INFOPATH/LDFLAGS/CPPFLAGS
+	sed -i '/. ~\/linuxify$/d' ~/.bashrc
+	rm -f ~/linuxify
+	exec bash
 }
 
-linuxify_info() {
-    linuxify_check_os;
-    linuxify_check_brew;
+# Exports
 
-    for (( i=0; i<${#linuxify_formulas[@]}; i++ )); do
-        brew info $(echo "${linuxify_formulas[i]}" | cut -d ' ' -f1)
-        printf "\n\n===============================================================================================================================\n\n"
-    done
-}
+# most programs
+export PATH="/usr/local/bin:$PATH"
+export MANPATH="/usr/local/share/man:$MANPATH"
+export INFOPATH="/usr/local/share/info:$INFOPATH"
 
-linuxify_help() {
-  echo "usage: linuxify [-h] [command]";
-  echo ""
-  echo "valid commands:"
-  echo "  install    install GNU/Linux utilities"
-  echo "  uninstall  uninstall GNU/Linux utilities"
-  echo "  info       show info on GNU/Linux utilities"
-  echo ""
-  echo "optional arguments:"
-  echo "  -h, --help  show this help message and exit"
-}
+# coreutils
+export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
+export MANPATH="/usr/local/opt/coreutils/libexec/gnuman:$MANPATH"
 
-linuxify_main() {
-    if [ $# -eq 1 ]; then
-        case $1 in
-            "install") linuxify_install ;;
-            "uninstall") linuxify_uninstall ;;
-            "info") linuxify_info ;;
-            "-h") linuxify_help ;;
-            "--help") linuxify_help ;;
-        esac
-    else
-        linuxify_help;
-        exit
-    fi
-}
+# make
+export PATH="/usr/local/opt/make/libexec/gnubin:$PATH"
+export MANPATH="/usr/local/opt/make/libexec/gnuman:$MANPATH"
 
-linuxify_main "$@"
+# m4
+export PATH="/usr/local/opt/m4/bin:$PATH"
+
+# file-formula
+export PATH="/usr/local/opt/file-formula/bin:$PATH"
+
+# unzip
+export PATH="/usr/local/opt/unzip/bin:$PATH"
+
+# python
+export PATH="/usr/local/opt/python/libexec/bin:$PATH"
+
+# flex
+export PATH="/usr/local/opt/flex/bin:$PATH"
+export LDFLAGS="-L/usr/local/opt/flex/lib"
+export CPPFLAGS="-I/usr/local/opt/flex/include"
+
+# bison
+export PATH="/usr/local/opt/bison/bin:$PATH"
+export LDFLAGS="-L/usr/local/opt/bison/lib"
+
+# libressl
+export PATH="/usr/local/opt/libressl/bin:$PATH"
+export LDFLAGS="-L/usr/local/opt/libressl/lib"
+export CPPFLAGS="-I/usr/local/opt/libressl/include"
+export PKG_CONFIG_PATH="/usr/local/opt/libressl/lib/pkgconfig"
+
+# ed
+export PATH="/usr/local/opt/ed/libexec/gnubin:$PATH"
+
+# findutils
+export PATH="/usr/local/opt/findutils/libexec/gnubin:$PATH"
+
+# gnu-indent
+export PATH="/usr/local/opt/gnu-indent/libexec/gnubin:$PATH"
+
+# gnu-sed
+export PATH="/usr/local/opt/gnu-sed/libexec/gnubin:$PATH"
+
+# gnu-tar
+export PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH"
+
+# gnu-which
+export PATH="/usr/local/opt/gnu-which/libexec/gnubin:$PATH"
+
+# grep
+export PATH="/usr/local/opt/grep/libexec/gnubin:$PATH"
