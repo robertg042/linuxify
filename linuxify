@@ -48,14 +48,14 @@ linuxify_formulas=(
     "diffutils"
     "ed"
     "findutils"
-    "gawk"
-    "gnu-indent"
+    # "gawk" too many awk versions to keep track
+    # "gnu-indent" skip
     "gnu-sed"
     "gnu-tar"
     "gnu-which"
     "grep"
     "gzip"
-    "screen"
+    # "screen" skip
 
     # GNU programs existing in macOS which are outdated
     "bash"
@@ -76,7 +76,7 @@ linuxify_formulas=(
     "git"
     "openssh"
     "perl"
-    "python"
+    # "python" skip
     "rsync"
     "unzip"
     "vim"

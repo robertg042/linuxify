@@ -22,8 +22,8 @@ export PATH="${BREW_HOME}/opt/file-formula/bin:$PATH"
 # unzip
 export PATH="${BREW_HOME}/opt/unzip/bin:$PATH"
 
-# python
-export PATH="${BREW_HOME}/opt/python/libexec/bin:$PATH"
+# python - skip
+# export PATH="${BREW_HOME}/opt/python/libexec/bin:$PATH"
 
 # flex
 export PATH="${BREW_HOME}/opt/flex/bin:$PATH"
@@ -46,8 +46,8 @@ export PATH="${BREW_HOME}/opt/ed/libexec/gnubin:$PATH"
 # findutils
 export PATH="${BREW_HOME}/opt/findutils/libexec/gnubin:$PATH"
 
-# gnu-indent
-export PATH="${BREW_HOME}/opt/gnu-indent/libexec/gnubin:$PATH"
+# gnu-indent - skip
+# export PATH="${BREW_HOME}/opt/gnu-indent/libexec/gnubin:$PATH"
 
 # gnu-sed
 export PATH="${BREW_HOME}/opt/gnu-sed/libexec/gnubin:$PATH"
