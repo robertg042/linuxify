@@ -81,6 +81,7 @@ linuxify_formulas=(
     "unzip"
     "vim"
     "cmake"
+    "pipx" # python3's equivalent of npx
 )
 
 linuxify_install_gdb() {
