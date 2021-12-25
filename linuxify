@@ -80,6 +80,7 @@ linuxify_formulas=(
     "rsync"
     "unzip"
     "vim"
+    "cmake"
 )
 
 linuxify_install_gdb() {
